@@ -3,6 +3,7 @@ const app = express();
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY)
 const port = process.env.PORT || 5000;
 
 // Middleware
@@ -49,6 +50,9 @@ async function run() {
     await client.connect();
     const classCollection = client.db("knockoutDB").collection("Class");
     const userCollection = client.db("knockoutDB").collection("user");
+    const selectedCollection = client.db("knockoutDB").collection("SelectedClass");
+    const enrollCollection = client.db("knockoutDB").collection("EnrollClass");
+    const paymentCollection = client.db("knockoutDB").collection("payments");
 
     app.post("/jwt", (req, res) => {
       const user = req.body;
@@ -124,7 +128,7 @@ async function run() {
           status: "approved",
         },
       };
-      const result = await userCollection.updateOne(filter, updateDoc);
+      const result = await classCollection.updateOne(filter, updateDoc);
       res.send(result);
     });
     app.patch("/manageClass/deny/admin/:id", async (req, res) => {
@@ -136,7 +140,7 @@ async function run() {
           status: "denied",
         },
       };
-      const result = await userCollection.updateOne(filter, updateDoc);
+      const result = await classCollection.updateOne(filter, updateDoc);
       res.send(result);
     });
 
@@ -165,17 +169,55 @@ async function run() {
       res.send(result);
     });
 
-    // Class
     app.post("/addClass", async (req, res) => {
       const newItem = req.body;
+      console.log(newItem)
       const result = await classCollection.insertOne(newItem);
       res.send(result);
+    });
+
+    app.put("/updateClass/:id", async (req, res) => {
+      const id = req.params.id;
+      const user = req.body;
+
+      const filter = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const updateClass = {
+        $set: {
+          name: user.name,
+          image: user.image,
+          totalSeats: user.totalSeats,
+          price: user.price
+        },
+      };
+      const result = await classCollection.updateOne(
+        filter,
+        updateToy,
+        options
+      );
+      console.log(updateClass)
+      // res.send(result);
     });
 
     app.get("/manageClass", async (req, res) => {
       const result = await classCollection.find().toArray();
       res.send(result);
     });
+    app.patch("/manageClass/feedback/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { feedback } = req.body;
+    
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = { $set: { feedback } };
+    
+        const result = await classCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to update class data" });
+      }
+    });
+    
 
     app.get("/allClass", async (req, res) => {
       const filter = { status: "approved" };
@@ -197,6 +239,67 @@ async function run() {
       const result = await userCollection.find(filter).toArray();
       res.send(result);
     });
+    app.get("/myClass/instructor/:email", async (req, res) => {
+      const Email = req.params.email;
+      const filter = { instructorEmail: Email };
+      const result = await classCollection.find(filter).toArray();
+      res.send(result);
+    });
+    
+    app.post("/selectedClass", async(req,res)=>{
+      const newItem = req.body;
+      const query = { _id: newItem._id }
+      const existingUser = await selectedCollection.findOne(query);
+
+      if (existingUser) {
+        return res.send({ message: 'item already exists' })
+      }
+      const result = await selectedCollection.insertOne(newItem);
+      res.send(result);
+    })
+    app.get("/student/selectedClass/:email", async(req,res)=>{
+      const email = req.params.email;
+      const filter = { student_email: email };
+      const result = await selectedCollection.find(filter).toArray();
+      res.send(result); 
+    })
+    app.delete("/student/selectedClass/delete/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await selectedCollection.deleteOne(query);
+      res.send(result);
+    });
+    app.get("/student/enrollClass/:email", async(req,res)=>{
+      const email = req.params.email;
+      const filter = { student_email: email };
+      const result = await enrollCollection.find(filter).toArray();
+      res.send(result); 
+    })
+
+
+    // Payment 
+        // create payment intent
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+          const { price } = req.body;
+          const amount = parseInt(price * 100);
+          const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount,
+            currency: 'usd',
+            payment_method_types: ['card']
+          });
+    
+          res.send({
+            clientSecret: paymentIntent.client_secret
+          })
+        })
+        app.post('/payments', verifyJWT, async (req, res) => {
+          const payment = req.body;
+          const insertResult = await paymentCollection.insertOne(payment);
+          const query = { _id: { $in: payment.cartItems.map(id => new ObjectId(id)) } }
+          const deleteResult = await selectedCollection.deleteMany(query)
+    
+          res.send({ insertResult, deleteResult });
+        })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
