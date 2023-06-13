@@ -3,7 +3,7 @@ const app = express();
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
-const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY)
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
 const port = process.env.PORT || 5000;
 
 // Middleware
@@ -50,8 +50,9 @@ async function run() {
     await client.connect();
     const classCollection = client.db("knockoutDB").collection("Class");
     const userCollection = client.db("knockoutDB").collection("user");
-    const selectedCollection = client.db("knockoutDB").collection("SelectedClass");
-    const enrollCollection = client.db("knockoutDB").collection("EnrollClass");
+    const selectedCollection = client
+      .db("knockoutDB")
+      .collection("SelectedClass");
     const paymentCollection = client.db("knockoutDB").collection("payments");
 
     app.post("/jwt", (req, res) => {
@@ -76,7 +77,7 @@ async function run() {
     };
 
     // All User
-    app.get("/user", async (req, res) => {
+    app.get("/user",verifyJWT,verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -93,7 +94,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/admin/:email", async (req, res) => {
+    app.get("/users/admin/:email",verifyJWT, async (req, res) => {
       const email = req.params.email;
       console.log(email);
       const query = { email: email };
@@ -102,7 +103,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/instructors/:email", async (req, res) => {
+    app.get("/users/instructors/:email",verifyJWT, async (req, res) => {
       const email = req.params.email;
       console.log(email);
       const query = { email: email };
@@ -110,7 +111,7 @@ async function run() {
       const result = { instructors: user?.position === "Instructor" };
       res.send(result);
     });
-    app.get("/users/student/:email", async (req, res) => {
+    app.get("/users/student/:email",verifyJWT, async (req, res) => {
       const email = req.params.email;
       console.log(email);
       const query = { email: email };
@@ -171,7 +172,7 @@ async function run() {
 
     app.post("/addClass", async (req, res) => {
       const newItem = req.body;
-      console.log(newItem)
+      console.log(newItem);
       const result = await classCollection.insertOne(newItem);
       res.send(result);
     });
@@ -187,16 +188,16 @@ async function run() {
           name: user.name,
           image: user.image,
           totalSeats: user.totalSeats,
-          price: user.price
+          price: user.price,
         },
       };
       const result = await classCollection.updateOne(
         filter,
-        updateToy,
+        updateClass,
         options
       );
-      console.log(updateClass)
-      // res.send(result);
+      console.log(updateClass);
+      res.send(result);
     });
 
     app.get("/manageClass", async (req, res) => {
@@ -207,21 +208,44 @@ async function run() {
       try {
         const id = req.params.id;
         const { feedback } = req.body;
-    
+
         const filter = { _id: new ObjectId(id) };
         const updateDoc = { $set: { feedback } };
-    
+
         const result = await classCollection.updateOne(filter, updateDoc);
         res.send(result);
       } catch (error) {
         res.status(500).json({ error: "Failed to update class data" });
       }
     });
-    
 
     app.get("/allClass", async (req, res) => {
       const filter = { status: "approved" };
       const result = await classCollection.find(filter).toArray();
+      res.send(result);
+    });
+
+    app.patch("/allClass/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id : new ObjectId(id) };
+      const existingDocument = await classCollection.findOne(filter);
+
+      if (!existingDocument) {
+        return res.status(404).json({ message: "Class not found" });
+      }
+
+      const { enrolled ,totalSeats} = existingDocument;
+
+      if (enrolled >= totalSeats) {
+        return res.status(403).json({ message: "Class is full" });
+      }
+      
+      const updateDoc = {
+        $set: {
+          enrolled: enrolled + 1,
+        },
+      };
+      const result = await classCollection.updateOne(filter, updateDoc);
       res.send(result);
     });
     app.get("/class", async (req, res) => {
@@ -245,61 +269,90 @@ async function run() {
       const result = await classCollection.find(filter).toArray();
       res.send(result);
     });
-    
-    app.post("/selectedClass", async(req,res)=>{
-      const newItem = req.body;
-      const query = { _id: newItem._id }
-      const existingUser = await selectedCollection.findOne(query);
 
-      if (existingUser) {
-        return res.send({ message: 'item already exists' })
-      }
+    app.post("/selectedClass", async (req, res) => {
+      const newItem = req.body;
+      newItem._id = new ObjectId();
+      newItem.PayStatus = "pending"
       const result = await selectedCollection.insertOne(newItem);
       res.send(result);
-    })
-    app.get("/student/selectedClass/:email", async(req,res)=>{
+    });
+    app.patch("/selectedClass/approve/student/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { ClassId : id };
+      const updateDoc = {
+        $set: {
+          PayStatus: "approved",
+        },
+      };
+      const result = await selectedCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    app.get("/student/selectedClass/:email", async (req, res) => {
       const email = req.params.email;
-      const filter = { student_email: email };
+      const filter = {
+        $and: [
+          { student_email: email },
+          { PayStatus: "pending" }
+        ]
+      };
       const result = await selectedCollection.find(filter).toArray();
-      res.send(result); 
-    })
+      res.send(result);
+    });
     app.delete("/student/selectedClass/delete/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await selectedCollection.deleteOne(query);
       res.send(result);
     });
-    app.get("/student/enrollClass/:email", async(req,res)=>{
+    app.get("/student/enrollClass/:email", async (req, res) => {
       const email = req.params.email;
-      const filter = { student_email: email };
-      const result = await enrollCollection.find(filter).toArray();
-      res.send(result); 
-    })
+      const filter = {
+        $and: [
+          { student_email: email },
+          { PayStatus: "approved" }
+        ]
+      };
+      const result = await selectedCollection.find(filter).toArray();
+      res.send(result);
+    });
 
+    // Payment
+    // create payment intent
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
 
-    // Payment 
-        // create payment intent
-        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
-          const { price } = req.body;
-          const amount = parseInt(price * 100);
-          const paymentIntent = await stripe.paymentIntents.create({
-            amount: amount,
-            currency: 'usd',
-            payment_method_types: ['card']
-          });
-    
-          res.send({
-            clientSecret: paymentIntent.client_secret
-          })
-        })
-        app.post('/payments', verifyJWT, async (req, res) => {
-          const payment = req.body;
-          const insertResult = await paymentCollection.insertOne(payment);
-          const query = { _id: { $in: payment.cartItems.map(id => new ObjectId(id)) } }
-          const deleteResult = await selectedCollection.deleteMany(query)
-    
-          res.send({ insertResult, deleteResult });
-        })
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
+    app.post("/payments", async (req, res) => {
+      const payment = req.body;
+      console.log({payment})
+      const insertResult = await paymentCollection.insertOne(payment);
+      const query = {
+        ClassId: payment.ClassId,
+        student_email: payment.email
+      };
+      const deleteResult = await selectedCollection.deleteMany(query);
+
+      res.send({ insertResult, deleteResult });
+    });
+
+    app.get("/payment/:id", async (req, res) => {
+      const email = req.params.id;
+      console.log(email)
+      const filter = { email: email };
+      const result = await paymentCollection.find(filter).toArray();
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
