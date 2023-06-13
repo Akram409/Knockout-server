@@ -12,6 +12,7 @@ app.use(express.json());
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
+  console.log(authorization)
   if (!authorization) {
     return res
       .status(401)
@@ -24,6 +25,7 @@ const verifyJWT = (req, res, next) => {
       return res
         .status(401)
         .send({ error: true, message: "unauthorized access" });
+        console.log(decoded)
     }
     req.decoded = decoded;
     next();
@@ -66,6 +68,7 @@ async function run() {
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
+
       const query = { email: email };
       const user = await userCollection.findOne(query);
       if (user?.position !== "Admin") {
@@ -77,7 +80,7 @@ async function run() {
     };
 
     // All User
-    app.get("/user",verifyJWT,verifyAdmin, async (req, res) => {
+    app.get("/user", async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -180,7 +183,7 @@ async function run() {
     app.put("/updateClass/:id", async (req, res) => {
       const id = req.params.id;
       const user = req.body;
-
+      console.log(id)
       const filter = { _id: new ObjectId(id) };
       const options = { upsert: true };
       const updateClass = {
@@ -337,13 +340,7 @@ async function run() {
       const payment = req.body;
       console.log({payment})
       const insertResult = await paymentCollection.insertOne(payment);
-      const query = {
-        ClassId: payment.ClassId,
-        student_email: payment.email
-      };
-      const deleteResult = await selectedCollection.deleteMany(query);
-
-      res.send({ insertResult, deleteResult });
+      res.send({ insertResult });
     });
 
     app.get("/payment/:id", async (req, res) => {
