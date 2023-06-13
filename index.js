@@ -12,7 +12,6 @@ app.use(express.json());
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
-  console.log(authorization)
   if (!authorization) {
     return res
       .status(401)
@@ -23,9 +22,8 @@ const verifyJWT = (req, res, next) => {
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
       return res
-        .status(401)
-        .send({ error: true, message: "unauthorized access" });
-        console.log(decoded)
+        .status(403)
+        .send({ error: true, message: "Forbidden access" });
     }
     req.decoded = decoded;
     next();
@@ -35,7 +33,7 @@ const verifyJWT = (req, res, next) => {
 // MongoDB
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.6nxonq0.mongodb.net/?retryWrites=true&w=majority`;
+const uri = `mongodb://${process.env.DB_USER}:${process.env.DB_PASS}@ac-rnyf82u-shard-00-00.6nxonq0.mongodb.net:27017,ac-rnyf82u-shard-00-01.6nxonq0.mongodb.net:27017,ac-rnyf82u-shard-00-02.6nxonq0.mongodb.net:27017/?ssl=true&replicaSet=atlas-fxfvty-shard-0&authSource=admin&retryWrites=true&w=majority`
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -80,9 +78,10 @@ async function run() {
     };
 
     // All User
-    app.get("/user", async (req, res) => {
+    app.get("/user",verifyJWT,verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray();
-      res.send(result);
+      res.send({data:result});
+      
     });
 
     app.post("/users", async (req, res) => {
@@ -99,7 +98,6 @@ async function run() {
 
     app.get("/users/admin/:email",verifyJWT, async (req, res) => {
       const email = req.params.email;
-      console.log(email);
       const query = { email: email };
       const user = await userCollection.findOne(query);
       const result = { admin: user?.position === "Admin" };
@@ -108,7 +106,6 @@ async function run() {
 
     app.get("/users/instructors/:email",verifyJWT, async (req, res) => {
       const email = req.params.email;
-      console.log(email);
       const query = { email: email };
       const user = await userCollection.findOne(query);
       const result = { instructors: user?.position === "Instructor" };
@@ -116,7 +113,6 @@ async function run() {
     });
     app.get("/users/student/:email",verifyJWT, async (req, res) => {
       const email = req.params.email;
-      console.log(email);
       const query = { email: email };
       const user = await userCollection.findOne(query);
       const result = { student: user?.position === "Student" };
@@ -125,7 +121,6 @@ async function run() {
 
     app.patch("/manageClass/approve/admin/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
       const filter = { _id: new ObjectId(id) };
       const updateDoc = {
         $set: {
@@ -137,7 +132,6 @@ async function run() {
     });
     app.patch("/manageClass/deny/admin/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
       const filter = { _id: new ObjectId(id) };
       const updateDoc = {
         $set: {
@@ -150,7 +144,6 @@ async function run() {
 
     app.patch("/userRole/admin/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
       const filter = { _id: new ObjectId(id) };
       const updateDoc = {
         $set: {
@@ -162,7 +155,6 @@ async function run() {
     });
     app.patch("/userRole/instructor/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
       const filter = { _id: new ObjectId(id) };
       const updateDoc = {
         $set: {
@@ -175,7 +167,6 @@ async function run() {
 
     app.post("/addClass", async (req, res) => {
       const newItem = req.body;
-      console.log(newItem);
       const result = await classCollection.insertOne(newItem);
       res.send(result);
     });
@@ -183,7 +174,6 @@ async function run() {
     app.put("/updateClass/:id", async (req, res) => {
       const id = req.params.id;
       const user = req.body;
-      console.log(id)
       const filter = { _id: new ObjectId(id) };
       const options = { upsert: true };
       const updateClass = {
@@ -199,7 +189,6 @@ async function run() {
         updateClass,
         options
       );
-      console.log(updateClass);
       res.send(result);
     });
 
@@ -338,14 +327,12 @@ async function run() {
     });
     app.post("/payments", async (req, res) => {
       const payment = req.body;
-      console.log({payment})
       const insertResult = await paymentCollection.insertOne(payment);
       res.send({ insertResult });
     });
 
     app.get("/payment/:id", async (req, res) => {
       const email = req.params.id;
-      console.log(email)
       const filter = { email: email };
       const result = await paymentCollection.find(filter).toArray();
       res.send(result);
