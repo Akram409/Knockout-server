@@ -21,9 +21,7 @@ const verifyJWT = (req, res, next) => {
 
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
-      return res
-        .status(403)
-        .send({ error: true, message: "Forbidden access" });
+      return res.status(403).send({ error: true, message: "Forbidden access" });
     }
     req.decoded = decoded;
     next();
@@ -33,7 +31,7 @@ const verifyJWT = (req, res, next) => {
 // MongoDB
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const uri = `mongodb://${process.env.DB_USER}:${process.env.DB_PASS}@ac-rnyf82u-shard-00-00.6nxonq0.mongodb.net:27017,ac-rnyf82u-shard-00-01.6nxonq0.mongodb.net:27017,ac-rnyf82u-shard-00-02.6nxonq0.mongodb.net:27017/?ssl=true&replicaSet=atlas-fxfvty-shard-0&authSource=admin&retryWrites=true&w=majority`
+const uri = `mongodb://${process.env.DB_USER}:${process.env.DB_PASS}@ac-rnyf82u-shard-00-00.6nxonq0.mongodb.net:27017,ac-rnyf82u-shard-00-01.6nxonq0.mongodb.net:27017,ac-rnyf82u-shard-00-02.6nxonq0.mongodb.net:27017/?ssl=true&replicaSet=atlas-fxfvty-shard-0&authSource=admin&retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -47,7 +45,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     const classCollection = client.db("knockoutDB").collection("Class");
     const userCollection = client.db("knockoutDB").collection("user");
     const selectedCollection = client
@@ -78,13 +76,12 @@ async function run() {
     };
 
     // All User
-    app.get("/user",verifyJWT,verifyAdmin, async (req, res) => {
+    app.get("/user", verifyJWT, verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray();
-      res.send({data:result});
-      
+      res.send({ data: result });
     });
 
-    app.post("/users",verifyJWT,verifyAdmin, async (req, res) => {
+    app.post("/users", verifyJWT, verifyAdmin, async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
       const existingUser = await userCollection.findOne(query);
@@ -96,7 +93,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/admin/:email",verifyJWT, async (req, res) => {
+    app.get("/users/admin/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
       const user = await userCollection.findOne(query);
@@ -104,14 +101,14 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/users/instructors/:email",verifyJWT, async (req, res) => {
+    app.get("/users/instructors/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
       const user = await userCollection.findOne(query);
       const result = { instructors: user?.position === "Instructor" };
       res.send(result);
     });
-    app.get("/users/student/:email",verifyJWT, async (req, res) => {
+    app.get("/users/student/:email", verifyJWT, async (req, res) => {
       const email = req.params.email;
       const query = { email: email };
       const user = await userCollection.findOne(query);
@@ -219,19 +216,19 @@ async function run() {
 
     app.patch("/allClass/:id", async (req, res) => {
       const id = req.params.id;
-      const filter = { _id : new ObjectId(id) };
+      const filter = { _id: new ObjectId(id) };
       const existingDocument = await classCollection.findOne(filter);
 
       if (!existingDocument) {
         return res.status(404).json({ message: "Class not found" });
       }
 
-      const { enrolled ,totalSeats} = existingDocument;
+      const { enrolled, totalSeats } = existingDocument;
 
       if (enrolled >= totalSeats) {
         return res.status(403).json({ message: "Class is full" });
       }
-      
+
       const updateDoc = {
         $set: {
           enrolled: enrolled + 1,
@@ -265,13 +262,13 @@ async function run() {
     app.post("/selectedClass", async (req, res) => {
       const newItem = req.body;
       newItem._id = new ObjectId();
-      newItem.PayStatus = "pending"
+      newItem.PayStatus = "pending";
       const result = await selectedCollection.insertOne(newItem);
       res.send(result);
     });
     app.patch("/selectedClass/approve/student/:id", async (req, res) => {
       const id = req.params.id;
-      const filter = { ClassId : id };
+      const filter = { ClassId: id };
       const updateDoc = {
         $set: {
           PayStatus: "approved",
@@ -284,10 +281,7 @@ async function run() {
     app.get("/student/selectedClass/:email", async (req, res) => {
       const email = req.params.email;
       const filter = {
-        $and: [
-          { student_email: email },
-          { PayStatus: "pending" }
-        ]
+        $and: [{ student_email: email }, { PayStatus: "pending" }],
       };
       const result = await selectedCollection.find(filter).toArray();
       res.send(result);
@@ -301,10 +295,7 @@ async function run() {
     app.get("/student/enrollClass/:email", async (req, res) => {
       const email = req.params.email;
       const filter = {
-        $and: [
-          { student_email: email },
-          { PayStatus: "approved" }
-        ]
+        $and: [{ student_email: email }, { PayStatus: "approved" }],
       };
       const result = await selectedCollection.find(filter).toArray();
       res.send(result);
@@ -339,7 +330,7 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
